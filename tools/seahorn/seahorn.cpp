@@ -131,6 +131,11 @@ Bmc ("horn-bmc",
      llvm::cl::init (false));
 
 static llvm::cl::opt<bool>
+BoogieOutput ("horn-boogie",
+            llvm::cl::desc ("Translate llvm bitcode to boogie"),
+	    llvm::cl::init(false));
+
+static llvm::cl::opt<bool>
 OneAssumePerBlock ("horn-one-assume-per-block", 
                    llvm::cl::desc ("Make sure there is at most one call to verifier.assume per block"), 
                    llvm::cl::init (false));
@@ -293,7 +298,7 @@ int main(int argc, char **argv) {
     pass_manager.add (seahorn::createOneAssumePerBlockPass ());
   }
 
-#ifdef HAVE_CRAB_LLVM
+  #ifdef HAVE_CRAB_LLVM
   if (Crab)
   {
     /// -- insert invariants in the bitecode
@@ -301,13 +306,13 @@ int main(int argc, char **argv) {
     /// -- simplify invariants added in the bitecode
     // pass_manager.add (seahorn::createInstCombine ());
   }
-#endif
+  #endif
 
   // --- verify if an undefined value can be read
   pass_manager.add (seahorn::createCanReadUndefPass ());
 
 
-  if (!Bmc)
+  if (!Bmc && !BoogieOutput)
     pass_manager.add (new seahorn::HornifyModule ());
 
   // FIXME: if StripShadowMemPass () is executed then DsaPrinterPass
@@ -338,6 +343,17 @@ int main(int argc, char **argv) {
     if (!OutputFilename.empty ()) out = &output->os ();
     pass_manager.add (seahorn::createBmcPass (out, Solve));
   }
+  else if (BoogieOutput)
+  {
+    llvm::raw_ostream *out = nullptr;
+    if (!OutputFilename.empty ()) {
+      out = &output->os ();
+      pass_manager.add (seahorn::createBoogieWriterPass (out));
+    } else {
+      llvm::errs() << "error: " << "boogie requires option -o" << "\n";
+      return 3;
+    }
+  }
   else
   {
     if (!OutputFilename.empty ()) pass_manager.add (new seahorn::HornWrite (output->os ()));
@@ -349,8 +365,7 @@ int main(int argc, char **argv) {
           if (Cex) pass_manager.add (new seahorn::HornCex ());
     }
   }
-  
-  
+    
   pass_manager.run(*module.get());
 
   if (!AsmOutputFilename.empty ()) asmOutput->keep ();

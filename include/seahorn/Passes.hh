@@ -80,6 +80,8 @@ namespace seahorn
   llvm::Pass* createKleeInternalizePass ();
   llvm::Pass* createWrapMemPass ();  
   llvm::Pass* createRenameNondetPass();
+
+  llvm::Pass* createBoogieWriterPass(llvm::raw_ostream* out);
 }
 
 #ifdef HAVE_LLVM_SEAHORN
