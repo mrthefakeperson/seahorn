@@ -11,11 +11,11 @@
 #include "ufo/Passes/NameValues.hpp"
 #include "seahorn/Support/CFG.hh"
 
-// #ifdef HAVE_CRAB_LLVM
-// #include "seahorn/Analysis/CutPointGraph.hh"
-// #include "crab_llvm/CrabLlvm.hh"
-// #include "crab_llvm/wrapper_domain.hh"
-// #endif
+#ifdef HAVE_CRAB_LLVM
+#include "seahorn/Analysis/CutPointGraph.hh"
+#include "crab_llvm/CrabLlvm.hh"
+#include "crab_llvm/wrapper_domain.hh"
+#endif
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/IR/BasicBlock.h"
@@ -116,7 +116,6 @@ namespace seahorn
   typedef std::string term_t;
   typedef std::string type_t;  
 
-  /** Factory to create boogie instructions **/
   /** Factory to create boogie instructions **/
   class instruction_factory {
   public:
@@ -409,8 +408,13 @@ namespace seahorn
   instruction_t instruction_factory::mk_havoc(term_t v)
   { return "havoc " + v + ";" ; }
 
-  instruction_t instruction_factory::mk_invariant(term_t v)
-  { return "invariant " + v + ";" ; }
+  instruction_t instruction_factory::mk_invariant(term_t v) {
+    if (v != "") {
+      return "assume " + v + ";" ;
+    } else {
+      return mk_nop();
+    }
+  }
   
   instruction_t instruction_factory::mk_return() { return "return;";}    
 
@@ -796,12 +800,12 @@ namespace seahorn
     // -- process the cfg
     for (auto &cur : m_func) {
       // translate the block ignoring branches and phi-nodes
-      boogieInstVisitor v(bfac[cur.getName()], ifac, m_dl, m_tli);
+      block &gcur = bfac[cur.getName()];	  
+      boogieInstVisitor v(gcur, ifac, m_dl, m_tli);
       v.visit(&cur);
       
       for (const BasicBlock *dst : succs (cur)) {
 	
-	block &gcur = bfac[cur.getName()];	  
 	block *gmid = nullptr;
 	
 	if (const BranchInst *br = dyn_cast<const BranchInst>(cur.getTerminator())) {
@@ -882,28 +886,31 @@ namespace seahorn
 
     const TargetLibraryInfo *m_tli;
     const DataLayout *m_dl;
-    // #ifdef HAVE_CRAB_LLVM
-    // crab_llvm::CrabLlvmPass *m_crab;
-    // #endif     
-    
+    bool m_use_crab;    
+    #ifdef HAVE_CRAB_LLVM
+    crab_llvm::CrabLlvmPass *m_crab;
+    #endif     
   public:
     
     static char ID;
 
-    BoogieWriterPass(raw_ostream *out = &llvm::errs())
+    BoogieWriterPass(raw_ostream *out = &llvm::errs(), bool use_crab = false)
       : ModulePass(ID), m_out(out),
-	m_tli(nullptr), m_dl(nullptr)
-      // #ifdef HAVE_CRAB_LLVM
-      // , m_crab(nullptr)
-      // #endif 
+	m_tli(nullptr), m_dl(nullptr),
+	m_use_crab(use_crab)
+      #ifdef HAVE_CRAB_LLVM
+      , m_crab(nullptr)
+      #endif
     {}
 
     virtual bool runOnModule (Module &M) {
       m_tli = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
       m_dl = &(M.getDataLayout());
-      // #ifdef HAVE_CRAB_LLVM
-      // m_crab = &getAnalysis<crab_llvm::CrabLlvmPass> ();
-      // #endif 
+      #ifdef HAVE_CRAB_LLVM
+      if (m_use_crab) {
+	m_crab = &getAnalysis<crab_llvm::CrabLlvmPass> ();
+      }
+      #endif 
       
       for (Function &F : M) {
 	// -- ignore shadow memory functions created by seahorn
@@ -916,19 +923,49 @@ namespace seahorn
     bool runOnFunction(Function &F){
       
       DenseMap<const BasicBlock*, std::string> invariants;
-      // #ifdef HAVE_CRAB_LLVM
-      // // -- collect invariants only for CFG cut points.
-      // const CutPointGraph &cpg = getAnalysis<CutPointGraph>(F);
-      // for (auto &B: F) {
-      // 	if (cpg.isCutPoint(B)) {
-      // 	  if (auto dom_ptr = m_crab->get_pre(&B)) {
-      // 	    crab::crab_string_os out;
-      // 	    dom_ptr->write(out);
-      // 	    invariants[&B] = out.str();
-      // 	  }
-      // 	}
-      // }
-      // #endif 
+      
+      #ifdef HAVE_CRAB_LLVM
+      if (m_crab) {
+	// FIXME: some crash happens when cpg is used.
+	//const CutPointGraph &cpg = getAnalysis<CutPointGraph>(F);
+	for (auto &B: F) {
+	  // if (!cpg.isCutPoint(B)) {
+	  //   continue;
+	  // }
+      	  if (auto dom_ptr = m_crab->get_pre(&B)) {
+      	    crab::crab_string_os out;
+	    crab_llvm::z_lin_cst_sys_t csts = dom_ptr->to_linear_constraints();
+	    typename crab_llvm::z_lin_cst_sys_t::iterator it = csts.begin();
+	    typename crab_llvm::z_lin_cst_sys_t::iterator et = csts.end();
+	    for (; it!=et; ) {
+	      crab_llvm::z_lin_cst_t cst = *it;
+	      if (cst.is_tautology()) {
+		// do nothing
+		++it;
+		continue;
+	      } else if (cst.is_contradiction()) {
+		out << "false";
+		break;
+	      } else {
+		if (cst.is_equality()) {
+		  // FIXME: crab prints equalities with "="
+		  crab_llvm::z_lin_exp_t e = cst.expression() - cst.constant();
+		  ikos::z_number c = -(cst.constant());
+		  out << e << " == " << c;
+		} else {
+		  cst.write(out);
+		}
+	      }
+	      ++it;
+	      if (it != et) {
+		out << " && ";
+	      } 
+	    }
+      	    invariants[&B] = out.str();
+      	  }
+	}
+      }
+      #endif 
       BoogieWriter writer(F, invariants, m_dl, m_tli);
       writer.write(*m_out);
       
@@ -946,19 +983,20 @@ namespace seahorn
       AU.addRequired<UnifyFunctionExitNodes>();
       AU.addRequired<ufo::NameValues>();
       
-      // #ifdef HAVE_CRAB_LLVM
-      // AU.addRequired<seahorn::TopologicalOrder>();      
-      // AU.addRequired<CutPointGraph>();
-      // AU.addRequired<crab_llvm::CrabLlvmPass>();
-      // #endif 
+      #ifdef HAVE_CRAB_LLVM
+      AU.addRequired<seahorn::TopologicalOrder>();      
+      AU.addRequired<CutPointGraph>();
+      AU.addRequired<crab_llvm::CrabLlvmPass>();
+      
+      #endif 
     }
   };
 
 
   char BoogieWriterPass::ID = 0;
   
-  Pass* createBoogieWriterPass (raw_ostream *out) {
-    return new BoogieWriterPass(out);
+  Pass* createBoogieWriterPass (raw_ostream *out, bool use_crab) {
+    return new BoogieWriterPass(out, use_crab);
   }
   
 } // end namespace seahorn

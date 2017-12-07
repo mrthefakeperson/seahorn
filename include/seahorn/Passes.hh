@@ -81,7 +81,7 @@ namespace seahorn
   llvm::Pass* createWrapMemPass ();  
   llvm::Pass* createRenameNondetPass();
 
-  llvm::Pass* createBoogieWriterPass(llvm::raw_ostream* out);
+  llvm::Pass* createBoogieWriterPass(llvm::raw_ostream* out, bool use_crab);
 }
 
 #ifdef HAVE_LLVM_SEAHORN

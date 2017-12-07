@@ -299,7 +299,7 @@ int main(int argc, char **argv) {
   }
 
   #ifdef HAVE_CRAB_LLVM
-  if (Crab)
+  if (Crab && !BoogieOutput)
   {
     /// -- insert invariants in the bitecode
     pass_manager.add (new crab_llvm::InsertInvariants ());
@@ -348,7 +348,7 @@ int main(int argc, char **argv) {
     llvm::raw_ostream *out = nullptr;
     if (!OutputFilename.empty ()) {
       out = &output->os ();
-      pass_manager.add (seahorn::createBoogieWriterPass (out));
+      pass_manager.add (seahorn::createBoogieWriterPass (out, Crab));
     } else {
       llvm::errs() << "error: " << "boogie requires option -o" << "\n";
       return 3;
