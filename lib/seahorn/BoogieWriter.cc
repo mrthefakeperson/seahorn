@@ -271,12 +271,13 @@ namespace seahorn
       case BinaryOperator::Or:
 	return *lhs + " := " + *op1 + " || " + *op2 + ";" ;
       case BinaryOperator::Xor:
-	return *lhs + " := " + *op1 + "  " + *op2 + ";" ;			
+	// TODO: don't know which is the boogie operator
+	//return *lhs + " := " + *op1 + " ^  " + *op2 + ";" ;			
       default:;;
 	break;				
       }
     }
-    errs () << "Skipped " << I << "\n";	
+    errs () << "Boogie translation skipped " << I << "\n";	
     return mk_havoc(*lhs);
   }
 
@@ -621,7 +622,7 @@ namespace seahorn
 	  // -- inline asm: do nothing
 	} else {
 	  // -- unresolved call
-	  errs () << "Skipped indirect call. Enable --devirt-functions";
+	  errs () << "Boogie translation skipped indirect call. Enable --devirt-functions";
 	  if (instruction_factory::opt_term_t vt = m_ifac.get_value(I)) {
 	    m_bb += m_ifac.mk_havoc(*vt);
 	  }
@@ -676,7 +677,7 @@ namespace seahorn
     /// base case. if all else fails.
     void visitInstruction (Instruction &I) {
       if (m_ifac.is_tracked(I)) {
-	errs () << "Skipped " << I << "\n";
+	errs () << "Boogie translation skipped " << I << "\n";
       }
     }    
     
