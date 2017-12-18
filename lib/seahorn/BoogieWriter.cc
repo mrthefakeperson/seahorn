@@ -891,7 +891,7 @@ namespace seahorn
     #ifdef HAVE_CRAB_LLVM
     crab_llvm::CrabLlvmPass *m_crab;
 
-    static const Value* is_bool_cst (crab_llvm::z_lin_cst_t cst) {
+    static const Value* is_bool_cst (crab_llvm::lin_cst_t cst) {
       if (cst.is_disequation ()) return nullptr;
       auto e = cst.expression() - cst.expression().constant();
       if (std::distance (e.begin (), e.end ()) != 1) return nullptr; 
@@ -938,7 +938,7 @@ namespace seahorn
     #ifdef HAVE_CRAB_LLVM
     // some tweaks to adapt crab pretty printing format to boogie
     template<typename Out>
-    void translate_crab_invariant (Out& out, crab_llvm::z_lin_cst_t cst) {
+    void translate_crab_invariant (Out& out, crab_llvm::lin_cst_t cst) {
       assert(!cst.is_tautology());
       
       if (cst.is_contradiction()) {
@@ -946,7 +946,7 @@ namespace seahorn
       } else {	  
 	if (cst.is_equality()) {
 	  // FIXME: crab prints equalities with "="
-	  crab_llvm::z_lin_exp_t e = cst.expression() - cst.constant();
+	  crab_llvm::lin_exp_t e = cst.expression() - cst.constant();
 	  ikos::z_number c = -(cst.constant());
 	  out << e << " == " << c;
 	} else {
@@ -970,11 +970,11 @@ namespace seahorn
 	  // }
       	  if (auto dom_ptr = m_crab->get_pre(&B)) {
       	    crab::crab_string_os out;
-	    crab_llvm::z_lin_cst_sys_t csts = dom_ptr->to_linear_constraints();
-	    typename crab_llvm::z_lin_cst_sys_t::iterator it = csts.begin();
-	    typename crab_llvm::z_lin_cst_sys_t::iterator et = csts.end();
+	    crab_llvm::lin_cst_sys_t csts = dom_ptr->to_linear_constraints();
+	    typename crab_llvm::lin_cst_sys_t::iterator it = csts.begin();
+	    typename crab_llvm::lin_cst_sys_t::iterator et = csts.end();
 	    for (; it!=et; ) {
-	      crab_llvm::z_lin_cst_t cst = *it;
+	      crab_llvm::lin_cst_t cst = *it;
 	      if (cst.is_tautology() || is_bool_cst(cst)) {
 		// TODO: translate constraints with boolean operands
 		// do nothing
